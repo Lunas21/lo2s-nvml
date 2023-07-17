@@ -122,9 +122,19 @@ MainMonitor::MainMonitor() : trace_(), metrics_(trace_)
     {
         try
         {
+            result = nvmlInit();
+
+            if (NVML_SUCCESS != result){ 
+
+                Log::error() << "Failed to initialize NVML: " << nvmlErrorString(result);
+                throw_errno();
+            }
             for(const auto& gpu : Topology::instance().gpus()){
-                nvml_recorder_ = std::make_unique<metric::nvml::Recorder>(trace_, gpu);
-                nvml_recorder_->start();
+                nvml_recorders_.emplace_back(std::make_unique<metric::nvml::Recorder>(trace_, gpu));
+                nvml_recorders_.back()->start();
+
+                process_recorders_.emplace_back(std::make_unique<metric::nvml::ProcessRecorder>(trace_, gpu));
+                process_recorders_.back()->start();
             }
         }
         catch (std::exception& e)
@@ -160,7 +170,20 @@ MainMonitor::~MainMonitor()
 #ifdef HAVE_NVML
     if (config().use_nvml)
     {
-        nvml_recorder_->stop();
+        for (auto& recorder : nvml_recorders_)
+        {
+            recorder->stop();
+        }
+        for (auto& recorder : process_recorders_)
+        {
+            recorder->stop();
+        }
+           result = nvmlShutdown();
+
+        if (NVML_SUCCESS != result){
+
+            Log::error() << "Failed to shutdown NVML: " << nvmlErrorString(result);
+        }
     }
 #endif
 

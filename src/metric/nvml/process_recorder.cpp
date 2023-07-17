@@ -38,21 +38,12 @@ namespace nvml
 {
 
 
-ProcessRecorder::ProcessRecorder(trace::Trace& trace, Gpu gpu, unsigned int pid, char proc_name[])
-: PollMonitor(trace, std::string(proc_name) + " (" + std::to_string(pid) + ")", config().read_interval),
-  otf2_writer_(trace.create_metric_writer(name())),
-  metric_instance_(trace.metric_instance(trace.metric_class(), otf2_writer_.location(),
-                                         trace.system_tree_gpu_node(gpu)))
+ProcessRecorder::ProcessRecorder(trace::Trace& trace, Gpu gpu)
+: PollMonitor(trace, "gpu " + std::to_string(gpu.as_int()) + " (" + gpu.name() + ")", config().read_interval)
 {
-    pid_ = pid;
 
-    result = nvmlInit();
-
-    if (NVML_SUCCESS != result){ 
-
-        Log::error() << "Failed to initialize NVML: " << nvmlErrorString(result);
-        throw_errno();
-    }
+    gpu_ = gpu;
+    trace_ = &trace;
 
     result = nvmlDeviceGetHandleByIndex(gpu.as_int(), &device);
 
@@ -62,31 +53,6 @@ ProcessRecorder::ProcessRecorder(trace::Trace& trace, Gpu gpu, unsigned int pid,
         throw_errno();
     }
 
-    auto mc = otf2::definition::make_weak_ref(metric_instance_.metric_class());
-
-    mc->add_member(trace.metric_member("Decoder Utilization", "GPU Decoder Utilization by this Process",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "%"));
-    mc->add_member(trace.metric_member("Encoder Utilization", "GPU Encoder Utilization by this Process",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "%"));
-    mc->add_member(trace.metric_member("Memory Utilization", "GPU Memory Utilization by this Process",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "%"));
-    mc->add_member(trace.metric_member("SM Utilization", "GPU SM Utilization by this Process",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "%"));
-
-    event_ = std::make_unique<otf2::event::metric>(otf2::chrono::genesis(), metric_instance_);
-}
-
-void ProcessRecorder::monitor([[maybe_unused]] int fd)
-{
-    // update timestamp
-    event_->timestamp(time::now());
-
-    unsigned int samples_count;
-
 
     nvmlDeviceGetProcessUtilization(device, NULL, &samples_count, lastSeenTimeStamp);
         
@@ -94,26 +60,129 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
         
     result = nvmlDeviceGetProcessUtilization(device, samples, &samples_count, lastSeenTimeStamp);
 
-    if (NVML_SUCCESS != result){ 
+    for(unsigned int i = 0; i < samples_count; i++)
+    {
+        result = (NVML_SUCCESS == result ? nvmlSystemGetProcessName(samples[i].pid, proc_name, max_length) : result);
+
+        if (NVML_SUCCESS != result){ 
         
-        throw_errno();
+            Log::error() << "Failed to get some process metric or name: " << nvmlErrorString(result);
+            throw_errno();
+
+        }
+
+        processes_.emplace_back(samples[i].pid);
+
+        otf2_writers_.emplace_back(&trace.create_metric_writer(name() + proc_name));
+        metric_instances_.emplace_back(trace.metric_instance(trace.metric_class(), otf2_writers_.back()->location(), trace.system_tree_gpu_node(gpu)));
+
+        auto mc = otf2::definition::make_weak_ref(metric_instances_.back().metric_class());
+
+        mc->add_member(trace.metric_member("Decoder Utilization", "GPU Decoder Utilization by this Process",
+                                            otf2::common::metric_mode::absolute_point,
+                                            otf2::common::type::Double, "%"));
+        mc->add_member(trace.metric_member("Encoder Utilization", "GPU Encoder Utilization by this Process",
+                                            otf2::common::metric_mode::absolute_point,
+                                            otf2::common::type::Double, "%"));
+        mc->add_member(trace.metric_member("Memory Utilization", "GPU Memory Utilization by this Process",
+                                            otf2::common::metric_mode::absolute_point,
+                                            otf2::common::type::Double, "%"));
+        mc->add_member(trace.metric_member("SM Utilization", "GPU SM Utilization by this Process",
+                                            otf2::common::metric_mode::absolute_point,
+                                            otf2::common::type::Double, "%"));
+        
+        events_.emplace_back(std::make_unique<otf2::event::metric>(otf2::chrono::genesis(), metric_instances_.back()));
 
     }
 
+    delete samples;
+
+}
+
+void ProcessRecorder::monitor([[maybe_unused]] int fd)
+{
+
+    for (auto& event : events_)
+    {
+        event->timestamp(time::now());
+    }
+
+    nvmlDeviceGetProcessUtilization(device, NULL, &samples_count, lastSeenTimeStamp);
+        
+    nvmlProcessUtilizationSample_t *samples = new nvmlProcessUtilizationSample_t[samples_count];
+        
+    result = nvmlDeviceGetProcessUtilization(device, samples, &samples_count, lastSeenTimeStamp);
+
     for(unsigned int i = 0; i < samples_count; i++)
     {
-        if(samples[i].pid == pid_)
+        for (long unsigned int j = 0; j < processes_.size(); j++)
         {
-            event_->raw_values()[0] = double(samples[i].decUtil);
-            event_->raw_values()[1] = double(samples[i].encUtil);
-            event_->raw_values()[2] = double(samples[i].memUtil);
-            event_->raw_values()[3] = double(samples[i].smUtil);
+            if (samples[i].pid == processes_[j])
+            {
+                events_.at(j)->raw_values()[0] = double(samples[i].decUtil);
+                events_.at(j)->raw_values()[1] = double(samples[i].encUtil);
+                events_.at(j)->raw_values()[2] = double(samples[i].memUtil);
+                events_.at(j)->raw_values()[3] = double(samples[i].smUtil);
 
-            lastSeenTimeStamp = samples[i].timeStamp;
 
-            // write event to archive
-            otf2_writer_.write(*event_);
+                otf2_writers_.at(j)->write(*events_.at(j));
+
+                continue;
+            }
+
+            if (j == processes_.size()-1)
+            {
+                result = nvmlSystemGetProcessName(samples[i].pid, proc_name, max_length);
+
+                if (NVML_SUCCESS != result){ 
+        
+                    Log::error() << "Failed to get some process name: " << nvmlErrorString(result);
+                    continue;
+
+                }
+
+                processes_.emplace_back(samples[i].pid);
+
+                otf2_writers_.emplace_back(&trace_->create_metric_writer(name() + proc_name));
+                metric_instances_.emplace_back(trace_->metric_instance(trace_->metric_class(), otf2_writers_.back()->location(), trace_->system_tree_gpu_node(gpu_)));
+
+                auto mc = otf2::definition::make_weak_ref(metric_instances_.back().metric_class());
+
+                mc->add_member(trace_->metric_member("Decoder Utilization", "GPU Decoder Utilization by this Process",
+                                                    otf2::common::metric_mode::absolute_point,
+                                                    otf2::common::type::Double, "%"));
+                mc->add_member(trace_->metric_member("Encoder Utilization", "GPU Encoder Utilization by this Process",
+                                                    otf2::common::metric_mode::absolute_point,
+                                                    otf2::common::type::Double, "%"));
+                mc->add_member(trace_->metric_member("Memory Utilization", "GPU Memory Utilization by this Process",
+                                                    otf2::common::metric_mode::absolute_point,
+                                                    otf2::common::type::Double, "%"));
+                mc->add_member(trace_->metric_member("SM Utilization", "GPU SM Utilization by this Process",
+                                                    otf2::common::metric_mode::absolute_point,
+                                                    otf2::common::type::Double, "%"));
+                
+                events_.emplace_back(std::make_unique<otf2::event::metric>(otf2::chrono::genesis(), metric_instances_.back()));
+
+                events_.back()->timestamp(time::now());
+                events_.back()->raw_values()[1] = double(samples[i].encUtil);
+                events_.back()->raw_values()[0] = double(samples[i].decUtil);
+                events_.back()->raw_values()[2] = double(samples[i].memUtil);
+                events_.back()->raw_values()[3] = double(samples[i].smUtil);
+
+
+                otf2_writers_.back()->write(*events_.back());
+            }
+
         }
+
+        lastSeenTimeStamp = samples[0].timeStamp;
+
+    }
+
+    if (NVML_SUCCESS != result && NVML_ERROR_NOT_FOUND != result){ 
+        
+        Log::error() << "Failed to get some process metric: " << nvmlErrorString(result);
+        throw_errno();
 
     }
 
@@ -123,13 +192,7 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
 
 ProcessRecorder::~ProcessRecorder()
 {
-    result = nvmlShutdown();
 
-    if (NVML_SUCCESS != result){
-
-        Log::error() << "Failed to shutdown NVML: " << nvmlErrorString(result);
-        throw_errno();
-    }
 }
 } // namespace nvml
 } // namespace metric

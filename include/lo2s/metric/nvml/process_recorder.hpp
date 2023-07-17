@@ -43,7 +43,7 @@ namespace nvml
 class ProcessRecorder : public monitor::PollMonitor
 {
 public:
-    ProcessRecorder(trace::Trace& trace, Gpu gpu, unsigned int pid, char proc_name[]);
+    ProcessRecorder(trace::Trace& trace, Gpu gpu);
     ~ProcessRecorder();
 
 protected:
@@ -51,19 +51,25 @@ protected:
 
     std::string group() const override
     {
-        return "nvml::Monitor";
+        return "nvml::ProcessMonitor";
     }
 
 private:
-    otf2::writer::local& otf2_writer_;
+    std::vector<otf2::writer::local*> otf2_writers_;
 
-    otf2::definition::metric_instance metric_instance_;
-    std::unique_ptr<otf2::event::metric> event_;
+    std::vector<otf2::definition::metric_instance> metric_instances_;
+    std::vector<std::unique_ptr<otf2::event::metric>> events_;
+    std::vector<unsigned int> processes_;
+
+    Gpu gpu_;
+    trace::Trace* trace_;
 
     nvmlReturn_t result;
     nvmlDevice_t device;
-    unsigned int pid_;
     unsigned long long lastSeenTimeStamp = 0;
+    unsigned int samples_count;
+    unsigned int max_length = 64;
+    char proc_name[64];
     
 };
 } // namespace nvml

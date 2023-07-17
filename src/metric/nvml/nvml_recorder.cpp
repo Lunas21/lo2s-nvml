@@ -45,16 +45,6 @@ Recorder::Recorder(trace::Trace& trace, Gpu gpu)
                                          trace.system_tree_gpu_node(gpu)))
 {
 
-    gpu_ = gpu;
-
-    result = nvmlInit();
-
-    if (NVML_SUCCESS != result){ 
-
-        Log::error() << "Failed to initialize NVML: " << nvmlErrorString(result);
-        throw_errno();
-    }
-
     result = nvmlDeviceGetHandleByIndex(gpu.as_int(), &device);
 
     if (NVML_SUCCESS != result){ 
@@ -136,10 +126,6 @@ void Recorder::monitor([[maybe_unused]] int fd)
     unsigned long long energy;
     unsigned long long clocksThrottleReasons;
 
-    unsigned int samples_count;
-    char proc_name[64];
-    int max_length = 64;
-
         
 	result = nvmlDeviceGetPowerUsage(device, &power);
 
@@ -167,30 +153,9 @@ void Recorder::monitor([[maybe_unused]] int fd)
 
     result = (NVML_SUCCESS == result ? nvmlDeviceGetCurrentClocksThrottleReasons(device, &clocksThrottleReasons) : result);
 
-
-    nvmlDeviceGetProcessUtilization(device, NULL, &samples_count, 0);
-        
-    nvmlProcessUtilizationSample_t *samples = new nvmlProcessUtilizationSample_t[samples_count];
-        
-    result = (NVML_SUCCESS == result ? nvmlDeviceGetProcessUtilization(device, samples, &samples_count, 0) : result);
-
-    for(unsigned int i = 0; i < samples_count; i++)
-    {
-        if(processes_.find(samples[i].pid) != processes_.end())
-        {
-            result = (NVML_SUCCESS == result ? nvmlSystemGetProcessName(samples[i].pid, proc_name, max_length) : result);
-
-            proc_recorder_ = std::make_unique<ProcessRecorder>(trace_, gpu_, samples[i].pid, proc_name);
-            proc_recorder_->start();
-
-            processes_.emplace(samples[i].pid);
-
-        }
-
-    }
-
     if (NVML_SUCCESS != result){ 
         
+        Log::error() << "Failed to get some nvml metric: " << nvmlErrorString(result);
         throw_errno();
 
     }
@@ -216,19 +181,11 @@ void Recorder::monitor([[maybe_unused]] int fd)
 
     // write event to archive
     otf2_writer_.write(*event_);
-
-    delete samples;
 }
 
 Recorder::~Recorder()
 {
-    result = nvmlShutdown();
-
-    if (NVML_SUCCESS != result){
-
-        Log::error() << "Failed to shutdown NVML: " << nvmlErrorString(result);
-        throw_errno();
-    }
+ 
 }
 } // namespace nvml
 } // namespace metric

@@ -22,7 +22,6 @@
 #pragma once
 
 #include <lo2s/monitor/poll_monitor.hpp>
-#include <lo2s/metric/nvml/process_recorder.hpp>
 #include <lo2s/time/time.hpp>
 #include <lo2s/trace/fwd.hpp>
 #include <lo2s/types.hpp>
@@ -62,10 +61,6 @@ private:
 
     otf2::definition::metric_instance metric_instance_;
     std::unique_ptr<otf2::event::metric> event_;
-
-    Gpu gpu_;
-    std::set<unsigned int> processes_;
-    std::unique_ptr<ProcessRecorder> proc_recorder_;
 
     nvmlReturn_t result;
     nvmlDevice_t device;

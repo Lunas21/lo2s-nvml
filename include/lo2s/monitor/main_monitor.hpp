@@ -33,6 +33,7 @@
 #endif
 #ifdef HAVE_NVML
 #include <lo2s/metric/nvml/nvml_recorder.hpp>
+#include <lo2s/metric/nvml/process_recorder.hpp>
 #endif
 #include <lo2s/mmap.hpp>
 #include <lo2s/monitor/bio_monitor.hpp>
@@ -85,7 +86,9 @@ protected:
     std::unique_ptr<metric::sensors::Recorder> sensors_recorder_;
 #endif
 #ifdef HAVE_NVML
-    std::unique_ptr<metric::nvml::Recorder> nvml_recorder_;
+    std::vector<std::unique_ptr<metric::nvml::Recorder>> nvml_recorders_;
+    std::vector<std::unique_ptr<metric::nvml::ProcessRecorder>> process_recorders_;
+    nvmlReturn_t result;
 #endif
 };
 } // namespace monitor
