@@ -29,6 +29,8 @@
 #include <otf2xx/definition/metric_instance.hpp>
 #include <otf2xx/writer/local.hpp>
 
+#include<map>
+
 extern "C"
 {
 #include <nvml.h>
@@ -57,18 +59,17 @@ protected:
 private:
     std::vector<otf2::writer::local*> otf2_writers_;
 
-    std::vector<otf2::definition::metric_instance> metric_instances_;
+    std::map<Process, otf2::definition::metric_instance> metric_instances_;
     std::vector<std::unique_ptr<otf2::event::metric>> events_;
-    std::vector<unsigned int> processes_;
 
     Gpu gpu_;
-    trace::Trace* trace_;
 
     nvmlReturn_t result;
     nvmlDevice_t device;
     unsigned long long lastSeenTimeStamp = 0;
     unsigned int samples_count;
     unsigned int max_length = 64;
+    Process proc;
     char proc_name[64];
     
 };

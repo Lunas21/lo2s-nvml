@@ -42,18 +42,18 @@ namespace metric
 {
 namespace nvml
 {
-class Recorder : public monitor::PollMonitor
+class MetricRecorder : public monitor::PollMonitor
 {
 public:
-    Recorder(trace::Trace& trace, Gpu gpu);
-    ~Recorder();
+    MetricRecorder(trace::Trace& trace, Gpu gpu);
+    ~MetricRecorder();
 
 protected:
     void monitor(int fd) override;
 
     std::string group() const override
     {
-        return "nvml::Monitor";
+        return "nvml::MetricMonitor";
     }
 
 private:

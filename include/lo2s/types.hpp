@@ -94,6 +94,10 @@ private:
 class Process
 {
 public:
+    explicit Process(pid_t pid, std::string name) : pid_(pid), process_name_(name)
+    {
+    }
+
     explicit Process(pid_t pid) : pid_(pid)
     {
     }
@@ -140,6 +144,11 @@ public:
     Thread as_thread() const;
     ExecutionScope as_scope() const;
 
+    std::string name() const
+    {
+        return process_name_;
+    }
+
     friend std::ostream& operator<<(std::ostream& stream, const Process& process)
     {
         return stream << fmt::format("{}", process);
@@ -147,6 +156,7 @@ public:
 
 private:
     pid_t pid_;
+    std::string process_name_;
 };
 
 class Cpu

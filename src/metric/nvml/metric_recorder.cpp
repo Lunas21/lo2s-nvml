@@ -19,7 +19,7 @@
  * along with lo2s.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <lo2s/metric/nvml/nvml_recorder.hpp>
+#include <lo2s/metric/nvml/metric_recorder.hpp>
 
 #include <lo2s/config.hpp>
 #include <lo2s/log.hpp>
@@ -38,7 +38,7 @@ namespace nvml
 {
 
 
-Recorder::Recorder(trace::Trace& trace, Gpu gpu)
+MetricRecorder::MetricRecorder(trace::Trace& trace, Gpu gpu)
 : PollMonitor(trace, "gpu " + std::to_string(gpu.as_int()) + " (" + gpu.name() + ")", config().read_interval),
   otf2_writer_(trace.create_metric_writer(name())),
   metric_instance_(trace.metric_instance(trace.metric_class(), otf2_writer_.location(),
@@ -66,17 +66,17 @@ Recorder::Recorder(trace::Trace& trace, Gpu gpu)
                                         otf2::common::type::Double, "%"));
     mc->add_member(trace.metric_member("Graphics Clock", "Speed of Graphics Clock Domain",
                                         otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "MHz"));
+                                        otf2::common::type::Double, "GHz"));
     mc->add_member(trace.metric_member("SM Clock", "Speed of Streaming Multiprocessor Clock Domain",
                                         otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "MHz"));
+                                        otf2::common::type::Double, "GHz"));
     mc->add_member(trace.metric_member("Memory Clock", "Speed of Memory Clock Domain",
                                         otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "MHz"));
+                                        otf2::common::type::Double, "GHz"));
     mc->add_member(trace.metric_member("Video Clock", "Speed of Video Encoder/Decoder Clock Domain",
                                         otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "MHz"));
-    mc->add_member(trace.metric_member("Utilization Rate", "Percentage of last sample period where kernels were executing",
+                                        otf2::common::type::Double, "GHz"));
+    mc->add_member(trace.metric_member("GPU Utilization Rate", "Percentage of last sample period where kernels were executing",
                                         otf2::common::metric_mode::absolute_point,
                                         otf2::common::type::Double, "%"));
     mc->add_member(trace.metric_member("Memory Utilization Rate", "Percentage of last sample period where memory was read/written",
@@ -87,10 +87,10 @@ Recorder::Recorder(trace::Trace& trace, Gpu gpu)
                                         otf2::common::type::Double, ""));
     mc->add_member(trace.metric_member("PCIe TX Throughput", "PCIe Transmit throughput of the GPU",
                                         otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "KB/s"));
+                                        otf2::common::type::Double, "MB/s"));
     mc->add_member(trace.metric_member("PCIe RX Throughput", "PCIe Receive throughput of the GPU",
                                         otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "KB/s"));
+                                        otf2::common::type::Double, "MB/s"));
     mc->add_member(trace.metric_member("Total Energy Consumption", "Energy Consumption of the GPU since last driver reload",
                                         otf2::common::metric_mode::absolute_point,
                                         otf2::common::type::Double, "J"));
@@ -104,7 +104,7 @@ Recorder::Recorder(trace::Trace& trace, Gpu gpu)
     event_ = std::make_unique<otf2::event::metric>(otf2::chrono::genesis(), metric_instance_);
 }
 
-void Recorder::monitor([[maybe_unused]] int fd)
+void MetricRecorder::monitor([[maybe_unused]] int fd)
 {
     // update timestamp
     event_->timestamp(time::now());
@@ -166,15 +166,15 @@ void Recorder::monitor([[maybe_unused]] int fd)
     event_->raw_values()[0] = double(power/1000);
     event_->raw_values()[1] = double(temp);
     event_->raw_values()[2] = double(fan_speed);
-    event_->raw_values()[3] = double(g_clock);
-    event_->raw_values()[4] = double(sm_clock);
-    event_->raw_values()[5] = double(mem_clock);
-    event_->raw_values()[6] = double(vid_clock);
+    event_->raw_values()[3] = double(g_clock/1000);
+    event_->raw_values()[4] = double(sm_clock/1000);
+    event_->raw_values()[5] = double(mem_clock/1000);
+    event_->raw_values()[6] = double(vid_clock/1000);
     event_->raw_values()[7] = double(utilization.gpu);
     event_->raw_values()[8] = double(utilization.memory);
     event_->raw_values()[9] = double(p_state);
-    event_->raw_values()[10] = double(tx);
-    event_->raw_values()[11] = double(rx);
+    event_->raw_values()[10] = double(tx/1024);
+    event_->raw_values()[11] = double(rx/1024);
     event_->raw_values()[12] = double(energy/1000);
     event_->raw_values()[13] = double(clocksThrottleReasons);
     event_->raw_values()[14] = double(std::chrono::duration_cast<std::chrono::microseconds>(time_taken).count())/1000;
@@ -183,7 +183,7 @@ void Recorder::monitor([[maybe_unused]] int fd)
     otf2_writer_.write(*event_);
 }
 
-Recorder::~Recorder()
+MetricRecorder::~MetricRecorder()
 {
  
 }

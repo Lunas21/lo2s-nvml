@@ -317,6 +317,15 @@ private:
 
     void add_lo2s_property(const std::string& name, const std::string& value);
 
+    const otf2::definition::string& process_name(Process p)
+    {
+        if (!thread_names_.count(p.as_thread()))
+        {
+            thread_names_[p.as_thread()] = p.name();
+        }
+        return intern(thread_names_.at(p.as_thread()));
+    }
+
 private:
     static constexpr pid_t METRIC_PID = 0;
 
@@ -333,7 +342,10 @@ private:
 
     // TODO add location groups (processes), read path from /proc/self/exe symlink
 
+public:
     std::map<Thread, std::string> thread_names_;
+    
+private:
     std::map<Thread, IpCctxEntry> calling_context_tree_;
 
     otf2::definition::comm_locations_group& comm_locations_group_;

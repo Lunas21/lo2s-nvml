@@ -32,7 +32,7 @@
 #include <lo2s/metric/sensors/recorder.hpp>
 #endif
 #ifdef HAVE_NVML
-#include <lo2s/metric/nvml/nvml_recorder.hpp>
+#include <lo2s/metric/nvml/metric_recorder.hpp>
 #include <lo2s/metric/nvml/process_recorder.hpp>
 #endif
 #include <lo2s/mmap.hpp>
@@ -86,7 +86,7 @@ protected:
     std::unique_ptr<metric::sensors::Recorder> sensors_recorder_;
 #endif
 #ifdef HAVE_NVML
-    std::vector<std::unique_ptr<metric::nvml::Recorder>> nvml_recorders_;
+    std::vector<std::unique_ptr<metric::nvml::MetricRecorder>> metric_recorders_;
     std::vector<std::unique_ptr<metric::nvml::ProcessRecorder>> process_recorders_;
     nvmlReturn_t result;
 #endif

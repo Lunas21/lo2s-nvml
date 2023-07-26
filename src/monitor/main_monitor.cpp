@@ -130,8 +130,8 @@ MainMonitor::MainMonitor() : trace_(), metrics_(trace_)
                 throw_errno();
             }
             for(const auto& gpu : Topology::instance().gpus()){
-                nvml_recorders_.emplace_back(std::make_unique<metric::nvml::Recorder>(trace_, gpu));
-                nvml_recorders_.back()->start();
+                metric_recorders_.emplace_back(std::make_unique<metric::nvml::MetricRecorder>(trace_, gpu));
+                metric_recorders_.back()->start();
 
                 process_recorders_.emplace_back(std::make_unique<metric::nvml::ProcessRecorder>(trace_, gpu));
                 process_recorders_.back()->start();
@@ -170,7 +170,7 @@ MainMonitor::~MainMonitor()
 #ifdef HAVE_NVML
     if (config().use_nvml)
     {
-        for (auto& recorder : nvml_recorders_)
+        for (auto& recorder : metric_recorders_)
         {
             recorder->stop();
         }
