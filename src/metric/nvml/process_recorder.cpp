@@ -91,6 +91,9 @@ ProcessRecorder::ProcessRecorder(trace::Trace& trace, Gpu gpu)
         mc->add_member(trace_.metric_member(std::string("SM Utilization, ") + proc_name, "GPU SM Utilization by this Process",
                                             otf2::common::metric_mode::absolute_point,
                                             otf2::common::type::Double, "%"));
+        mc->add_member(trace_.metric_member(std::string("Used GPU Memory, ") + proc_name, "GPU Memory used by this Process",
+                                            otf2::common::metric_mode::absolute_point,
+                                            otf2::common::type::Double, "MB"));
         
         events_.emplace_back(std::make_unique<otf2::event::metric>(otf2::chrono::genesis(), metric_instances_.at(proc)));
 
@@ -123,9 +126,28 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
     if (NVML_SUCCESS != result || samples[0].pid == 0) {return;}
 
 
-    for(unsigned int i = 0; i < samples_count; i++)
-    {
+    unsigned int infoCount = 0;
+    int graphics_proc_index;
         
+    result = nvmlDeviceGetGraphicsRunningProcesses(device, &infoCount, NULL);
+        
+    auto infos = std::make_unique<nvmlProcessInfo_t[]>(infoCount);
+
+    result = nvmlDeviceGetGraphicsRunningProcesses_v2(device, &infoCount, infos.get());
+
+
+    for (unsigned int i = 0; i < samples_count; i++)
+    {
+        graphics_proc_index = -1;
+
+        for (unsigned int g = 0; g < infoCount; g++)
+        {
+            if (samples[i].pid == infos[g].pid)
+            {
+                graphics_proc_index = g;
+            }
+        }
+
         proc = Process(samples[i].pid);
         Log::debug() << "Looking at sample " << i;
 
@@ -141,7 +163,11 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
                     events_.at(j)->raw_values()[0] = double(samples[i].decUtil);
                     events_.at(j)->raw_values()[1] = double(samples[i].encUtil);
                     events_.at(j)->raw_values()[2] = double(samples[i].memUtil);
-                    events_.at(j)->raw_values()[3] = double(samples[i].smUtil);    
+                    events_.at(j)->raw_values()[3] = double(samples[i].smUtil);  
+                    if (graphics_proc_index != -1)
+                    {
+                        events_.at(j)->raw_values()[4] = double(infos[graphics_proc_index].usedGpuMemory/(1024*1024));
+                    }  
 
                     otf2_writers_.at(j)->write(*events_.at(j));
 
@@ -184,6 +210,9 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
             mc->add_member(trace_.metric_member(std::string("SM Utilization, ") + proc_name, "GPU SM Utilization by this Process",
                                                 otf2::common::metric_mode::absolute_point,
                                                 otf2::common::type::Double, "%"));
+            mc->add_member(trace_.metric_member(std::string("Used GPU Memory, ") + proc_name, "GPU Memory used by this Process",
+                                            otf2::common::metric_mode::absolute_point,
+                                            otf2::common::type::Double, "MB"));
             
             events_.emplace_back(std::make_unique<otf2::event::metric>(otf2::chrono::genesis(), metric_instances_.at(proc)));
 
@@ -192,6 +221,10 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
             events_.back()->raw_values()[0] = double(samples[i].decUtil);
             events_.back()->raw_values()[2] = double(samples[i].memUtil);
             events_.back()->raw_values()[3] = double(samples[i].smUtil);
+            if (graphics_proc_index != -1)
+            {
+                events_.back()->raw_values()[4] = double(infos[graphics_proc_index].usedGpuMemory/(1024*1024));
+            } 
 
 
             otf2_writers_.back()->write(*events_.back());
