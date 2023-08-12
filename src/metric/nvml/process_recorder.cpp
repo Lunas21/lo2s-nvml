@@ -59,68 +59,69 @@ ProcessRecorder::ProcessRecorder(trace::Trace& trace, Gpu gpu)
         
     result = nvmlDeviceGetProcessUtilization(device, samples.get(), &samples_count, lastSeenTimeStamp);
 
-    for(unsigned int i = 0; i < samples_count; i++)
-    {
-        result = (NVML_SUCCESS == result ? nvmlSystemGetProcessName(samples[i].pid, proc_name, max_length) : result);
+    // catch nvml not getting correct samples
+    if (NVML_SUCCESS == result && samples[0].pid != 0) {
 
-        if (NVML_SUCCESS != result){ 
-        
-            Log::error() << "Failed to get some process metric or name: " << nvmlErrorString(result);
-            throw_errno();
+        for(unsigned int i = 0; i < samples_count; i++)
+        {
+            result = (NVML_SUCCESS == result ? nvmlSystemGetProcessName(samples[i].pid, proc_name, max_length) : result);
+
+            if (NVML_SUCCESS != result){ 
+            
+                Log::error() << "Failed to get some process metric or name: " << nvmlErrorString(result);
+                throw_errno();
+
+            }
+
+            proc = Process(samples[i].pid);
+
+            Log::debug() << "Found new Process: " << proc.as_pid_t();
+
+            Log::debug() << "Process name: " << proc_name;
+
+            otf2_writers_.emplace_back(&trace_.create_metric_writer(name() + proc_name));
+            metric_instances_.emplace(proc, trace_.metric_instance(trace_.metric_class(), otf2_writers_.back()->location(), trace_.system_tree_gpu_node(gpu)));
+
+            auto mc = otf2::definition::make_weak_ref(metric_instances_.at(proc).metric_class());
+
+            mc->add_member(trace_.metric_member(std::string("Decoder Utilization, ") + proc_name, "GPU Decoder Utilization by this Process",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "%"));
+            mc->add_member(trace_.metric_member(std::string("Encoder Utilization, ") + proc_name, "GPU Encoder Utilization by this Process",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "%"));
+            mc->add_member(trace_.metric_member(std::string("Memory Utilization, ") + proc_name, "GPU Memory Utilization by this Process",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "%"));
+            mc->add_member(trace_.metric_member(std::string("SM Utilization, ") + proc_name, "GPU SM Utilization by this Process",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "%"));
+            mc->add_member(trace_.metric_member(std::string("Used GPU Memory, ") + proc_name, "GPU Memory used by this Process",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "MB"));
+            
+            events_.emplace_back(std::make_unique<otf2::event::metric>(otf2::chrono::genesis(), metric_instances_.at(proc)));
 
         }
-
-        proc = Process(samples[i].pid);
-
-        Log::debug() << "Found new Process: " << proc.as_pid_t();
-
-        otf2_writers_.emplace_back(&trace_.create_metric_writer(name() + proc_name));
-        metric_instances_.emplace(proc, trace_.metric_instance(trace_.metric_class(), otf2_writers_.back()->location(), trace_.system_tree_gpu_node(gpu)));
-
-        auto mc = otf2::definition::make_weak_ref(metric_instances_.at(proc).metric_class());
-
-        mc->add_member(trace_.metric_member(std::string("Decoder Utilization, ") + proc_name, "GPU Decoder Utilization by this Process",
-                                            otf2::common::metric_mode::absolute_point,
-                                            otf2::common::type::Double, "%"));
-        mc->add_member(trace_.metric_member(std::string("Encoder Utilization, ") + proc_name, "GPU Encoder Utilization by this Process",
-                                            otf2::common::metric_mode::absolute_point,
-                                            otf2::common::type::Double, "%"));
-        mc->add_member(trace_.metric_member(std::string("Memory Utilization, ") + proc_name, "GPU Memory Utilization by this Process",
-                                            otf2::common::metric_mode::absolute_point,
-                                            otf2::common::type::Double, "%"));
-        mc->add_member(trace_.metric_member(std::string("SM Utilization, ") + proc_name, "GPU SM Utilization by this Process",
-                                            otf2::common::metric_mode::absolute_point,
-                                            otf2::common::type::Double, "%"));
-        mc->add_member(trace_.metric_member(std::string("Used GPU Memory, ") + proc_name, "GPU Memory used by this Process",
-                                            otf2::common::metric_mode::absolute_point,
-                                            otf2::common::type::Double, "MB"));
         
-        events_.emplace_back(std::make_unique<otf2::event::metric>(otf2::chrono::genesis(), metric_instances_.at(proc)));
-
+        lastSeenTimeStamp = samples[0].timeStamp;
     }
-    
-    Log::debug() << "updating timestamp from " << lastSeenTimeStamp << " to " << samples[0].timeStamp;
-    lastSeenTimeStamp = samples[0].timeStamp;
+
 
 }
 
 void ProcessRecorder::monitor([[maybe_unused]] int fd)
 {
-    Log::debug() << "In Monitor Function";
     for (auto& event : events_)
     {
         event->timestamp(time::now());
     }
-
-    Log::debug() << "updated timestamps of events";
 
     nvmlDeviceGetProcessUtilization(device, NULL, &samples_count, lastSeenTimeStamp);
         
     auto samples = std::make_unique<nvmlProcessUtilizationSample_t[]>(samples_count);
         
     result = nvmlDeviceGetProcessUtilization(device, samples.get(), &samples_count, lastSeenTimeStamp);
-
-    Log::debug() << "got " << samples_count << " samples";
 
     // catch nvml not getting correct samples
     if (NVML_SUCCESS != result || samples[0].pid == 0) {return;}
@@ -129,11 +130,11 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
     unsigned int infoCount = 0;
     int graphics_proc_index;
         
-    result = nvmlDeviceGetGraphicsRunningProcesses(device, &infoCount, NULL);
+    // result = nvmlDeviceGetGraphicsRunningProcesses(device, &infoCount, NULL);
         
     auto infos = std::make_unique<nvmlProcessInfo_t[]>(infoCount);
 
-    result = nvmlDeviceGetGraphicsRunningProcesses_v2(device, &infoCount, infos.get());
+    // result = nvmlDeviceGetGraphicsRunningProcesses_v2(device, &infoCount, infos.get());
 
 
     for (unsigned int i = 0; i < samples_count; i++)
@@ -149,17 +150,13 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
         }
 
         proc = Process(samples[i].pid);
-        Log::debug() << "Looking at sample " << i;
 
         if (metric_instances_.count(proc))
         {
-            Log::debug() << "process " << proc.as_pid_t() << " already exists";
             for (long unsigned int j = 0; j < events_.size(); j++)
             {
-                Log::debug() << "trying to find matching event"; 
                 if (events_.at(j)->resolve_metric_class() == metric_instances_.at(proc).metric_class())
                 {
-                    Log::debug() << "found matching event at j = " << j; 
                     events_.at(j)->raw_values()[0] = double(samples[i].decUtil);
                     events_.at(j)->raw_values()[1] = double(samples[i].encUtil);
                     events_.at(j)->raw_values()[2] = double(samples[i].memUtil);
@@ -171,7 +168,6 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
 
                     otf2_writers_.at(j)->write(*events_.at(j));
 
-                    Log::debug() << "writing events of process " << proc.as_pid_t();
                 }
 
             }
@@ -190,6 +186,8 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
                 continue;
 
             }
+
+            Log::debug() << "Process name: " << proc_name;
 
             proc = Process(samples[i].pid);
 
@@ -229,10 +227,8 @@ void ProcessRecorder::monitor([[maybe_unused]] int fd)
 
             otf2_writers_.back()->write(*events_.back());
 
-            Log::debug() << "wrote events of new process " << proc.as_pid_t();
         }
 
-        Log::debug() << "updating timestamp from " << lastSeenTimeStamp << " to " << samples[0].timeStamp;
         lastSeenTimeStamp = samples[0].timeStamp;
 
     }

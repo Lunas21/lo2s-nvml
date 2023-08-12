@@ -131,7 +131,7 @@ void MetricRecorder::monitor([[maybe_unused]] int fd)
 
     result = (NVML_SUCCESS == result ? nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp) : result);
 
-    result = (NVML_SUCCESS == result ? nvmlDeviceGetFanSpeed(device, &fan_speed) : result);
+    // result = (NVML_SUCCESS == result ? nvmlDeviceGetFanSpeed(device, &fan_speed) : result);
 
     result = (NVML_SUCCESS == result ? nvmlDeviceGetClockInfo(device, NVML_CLOCK_GRAPHICS, &g_clock) : result);
 
