@@ -174,7 +174,7 @@ Trace::Trace()
         const auto& name = intern(gpu.name());
 
         const auto& gpu_node = registry_.create<otf2::definition::system_tree_node>(
-            ByGpu(gpu), name, intern("gpu"), system_tree_root_node_);
+            ByGpu(gpu), name, intern("gpu " + std::to_string(gpu.as_int())) , system_tree_root_node_);
 
         // TODO otf2 has OTF2_SYSTEM_TREE_DOMAIN_ACCELERATOR_DEVICE, otf2xx doesn't
         registry_.create<otf2::definition::system_tree_node_domain>(
