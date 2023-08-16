@@ -38,10 +38,10 @@ namespace nvml
 {
 
 
-MetricRecorder::MetricRecorder(trace::Trace& trace, Gpu gpu)
+MetricRecorder::MetricRecorder(trace::Trace& trace, Gpu gpu, otf2::definition::metric_class metric_class)
 : PollMonitor(trace, "gpu " + std::to_string(gpu.as_int()) + " (" + gpu.name() + ")", config().read_interval),
   otf2_writer_(trace.create_metric_writer(name())),
-  metric_instance_(trace.metric_instance(trace.metric_class(), otf2_writer_.location(),
+  metric_instance_(trace.metric_instance(metric_class, otf2_writer_.location(),
                                          trace.system_tree_gpu_node(gpu)))
 {
 
@@ -52,54 +52,6 @@ MetricRecorder::MetricRecorder(trace::Trace& trace, Gpu gpu)
         Log::error() << "Failed to get handle for device: " << nvmlErrorString(result);
         throw_errno();
     }
-
-    auto mc = otf2::definition::make_weak_ref(metric_instance_.metric_class());
-
-    mc->add_member(trace.metric_member("Power Usage", "Total power consumption of this GPU",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "W"));
-    mc->add_member(trace.metric_member("Temperature", "Temperature of the GPU die",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "°C"));
-    mc->add_member(trace.metric_member("Fan Speed", "Percentage of maximum Fan Speed",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "%"));
-    mc->add_member(trace.metric_member("Graphics Clock", "Speed of Graphics Clock Domain",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "GHz"));
-    mc->add_member(trace.metric_member("SM Clock", "Speed of Streaming Multiprocessor Clock Domain",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "GHz"));
-    mc->add_member(trace.metric_member("Memory Clock", "Speed of Memory Clock Domain",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "GHz"));
-    mc->add_member(trace.metric_member("Video Clock", "Speed of Video Encoder/Decoder Clock Domain",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "GHz"));
-    mc->add_member(trace.metric_member("GPU Utilization Rate", "Percentage of last sample period where kernels were executing",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "%"));
-    mc->add_member(trace.metric_member("Memory Utilization Rate", "Percentage of last sample period where memory was read/written",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "%"));
-    mc->add_member(trace.metric_member("PState", "Performance State of the GPU",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, ""));
-    mc->add_member(trace.metric_member("PCIe TX Throughput", "PCIe Transmit throughput of the GPU",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "MB/s"));
-    mc->add_member(trace.metric_member("PCIe RX Throughput", "PCIe Receive throughput of the GPU",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "MB/s"));
-    mc->add_member(trace.metric_member("Total Energy Consumption", "Energy Consumption of the GPU since last driver reload",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "J"));
-    mc->add_member(trace.metric_member("Clocks Throttle Reasons", "Throttling reasons of clocks specified in bit mask",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, ""));
-    mc->add_member(trace.metric_member("NVML monitoring time", "time taken to get GPU metrics via nvml",
-                                        otf2::common::metric_mode::absolute_point,
-                                        otf2::common::type::Double, "ms"));
 
     event_ = std::make_unique<otf2::event::metric>(otf2::chrono::genesis(), metric_instance_);
 }
@@ -163,18 +115,18 @@ void MetricRecorder::monitor([[maybe_unused]] int fd)
     auto time_taken = time::now() - start;
     
 
-    event_->raw_values()[0] = double(power/1000);
+    event_->raw_values()[0] = double(power)/1000;
     event_->raw_values()[1] = double(temp);
     event_->raw_values()[2] = double(fan_speed);
-    event_->raw_values()[3] = double(g_clock/1000);
-    event_->raw_values()[4] = double(sm_clock/1000);
-    event_->raw_values()[5] = double(mem_clock/1000);
-    event_->raw_values()[6] = double(vid_clock/1000);
+    event_->raw_values()[3] = double(g_clock)/1000;
+    event_->raw_values()[4] = double(sm_clock)/1000;
+    event_->raw_values()[5] = double(mem_clock)/1000;
+    event_->raw_values()[6] = double(vid_clock)/1000;
     event_->raw_values()[7] = double(utilization.gpu);
     event_->raw_values()[8] = double(utilization.memory);
     event_->raw_values()[9] = double(p_state);
-    event_->raw_values()[10] = double(tx/1024);
-    event_->raw_values()[11] = double(rx/1024);
+    event_->raw_values()[10] = double(tx)/1024;
+    event_->raw_values()[11] = double(rx)/1024;
     event_->raw_values()[12] = double(energy/1000);
     event_->raw_values()[13] = double(clocksThrottleReasons);
     event_->raw_values()[14] = double(std::chrono::duration_cast<std::chrono::microseconds>(time_taken).count())/1000;

@@ -45,7 +45,7 @@ namespace nvml
 class MetricRecorder : public monitor::PollMonitor
 {
 public:
-    MetricRecorder(trace::Trace& trace, Gpu gpu);
+    MetricRecorder(trace::Trace& trace, Gpu gpu, otf2::definition::metric_class metric_class);
     ~MetricRecorder();
 
 protected:

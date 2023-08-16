@@ -129,8 +129,57 @@ MainMonitor::MainMonitor() : trace_(), metrics_(trace_)
                 Log::error() << "Failed to initialize NVML: " << nvmlErrorString(result);
                 throw_errno();
             }
+
+            auto mc = trace_.metric_class();
+
+            mc.add_member(trace_.metric_member("Power Usage", "Total power consumption of this GPU",
+                                        otf2::common::metric_mode::absolute_point,
+                                        otf2::common::type::Double, "W"));
+            mc.add_member(trace_.metric_member("Temperature", "Temperature of the GPU die",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "°C"));
+            mc.add_member(trace_.metric_member("Fan Speed", "Percentage of maximum Fan Speed",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "%"));
+            mc.add_member(trace_.metric_member("Graphics Clock", "Speed of Graphics Clock Domain",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "GHz"));
+            mc.add_member(trace_.metric_member("SM Clock", "Speed of Streaming Multiprocessor Clock Domain",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "GHz"));
+            mc.add_member(trace_.metric_member("Memory Clock", "Speed of Memory Clock Domain",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "GHz"));
+            mc.add_member(trace_.metric_member("Video Clock", "Speed of Video Encoder/Decoder Clock Domain",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "GHz"));
+            mc.add_member(trace_.metric_member("GPU Utilization Rate", "Percentage of last sample period where kernels were executing",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "%"));
+            mc.add_member(trace_.metric_member("Memory Utilization Rate", "Percentage of last sample period where memory was read/written",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "%"));
+            mc.add_member(trace_.metric_member("PState", "Performance State of the GPU",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, ""));
+            mc.add_member(trace_.metric_member("PCIe TX Throughput", "PCIe Transmit throughput of the GPU",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "MB/s"));
+            mc.add_member(trace_.metric_member("PCIe RX Throughput", "PCIe Receive throughput of the GPU",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "MB/s"));
+            mc.add_member(trace_.metric_member("Total Energy Consumption", "Energy Consumption of the GPU since last driver reload",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "J"));
+            mc.add_member(trace_.metric_member("Clocks Throttle Reasons", "Throttling reasons of clocks specified in bit mask",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, ""));
+            mc.add_member(trace_.metric_member("NVML monitoring time", "time taken to get GPU metrics via nvml",
+                                                otf2::common::metric_mode::absolute_point,
+                                                otf2::common::type::Double, "ms"));
+            
             for(const auto& gpu : Topology::instance().gpus()){
-                metric_recorders_.emplace_back(std::make_unique<metric::nvml::MetricRecorder>(trace_, gpu));
+                metric_recorders_.emplace_back(std::make_unique<metric::nvml::MetricRecorder>(trace_, gpu, mc));
                 metric_recorders_.back()->start();
 
                 process_recorders_.emplace_back(std::make_unique<metric::nvml::ProcessRecorder>(trace_, gpu));
